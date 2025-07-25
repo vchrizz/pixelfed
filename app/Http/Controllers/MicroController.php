@@ -45,7 +45,10 @@ class MicroController extends Controller
             $status = new Status;
             $status->type = 'text';
             $status->profile_id = $profile->id;
-            $status->caption = strip_tags($content);
+            // Preserve line breaks and basic formatting while sanitizing dangerous HTML
+            $caption = str_replace(['<br>', '<br/>', '<br />'], "\n", $content);
+            $caption = str_replace(['</p>', '</div>'], "\n", $caption);
+            $status->caption = trim(strip_tags($caption, '<br><p>'));
             $status->is_nsfw = false;
 
             // TODO: remove deprecated visibility in favor of scope

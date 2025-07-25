@@ -89,6 +89,10 @@ class Inbox
                 $this->handleCreateActivity();
                 break;
 
+            case 'Video':
+                $this->handleVideoActivity();
+                break;
+
             case 'Follow':
                 if (FollowValidator::validate($this->payload) == false) {
                     return;
@@ -274,6 +278,8 @@ class Inbox
                 return;
             }
             $this->handleNoteCreate();
+        } elseif ($activity['type'] == 'Video') {
+            $this->handleVideoCreate();
         }
 
     }
@@ -1432,5 +1438,55 @@ class Inbox
             ->onQueue('move')
             ->delay(now()->addMinutes(random_int(1, 3)))
             ->dispatch();
+    }
+
+    public function handleVideoActivity()
+    {
+        // Handle standalone Video objects (e.g., from PeerTube)
+        $activity = $this->payload;
+        $this->handleVideoCreate();
+    }
+
+    public function handleVideoCreate()
+    {
+        $activity = isset($this->payload['object']) ? $this->payload['object'] : $this->payload;
+        $actor = $this->actorFirstOrCreate($this->payload['actor'] ?? $activity['attributedTo']);
+        
+        if (! $actor || $actor->domain == null) {
+            return;
+        }
+
+        // Check if we already have this video
+        $hasUrl = isset($activity['url']);
+        $url = isset($activity['url']) ? $activity['url'] : $activity['id'];
+
+        if ($hasUrl) {
+            if (Status::whereUri($url)->exists()) {
+                return;
+            }
+        } else {
+            if (Status::whereObjectUrl($url)->exists()) {
+                return;
+            }
+        }
+
+        // Skip videos with no followers unless configured otherwise
+        if ($actor->followers_count == 0) {
+            if (config('federation.activitypub.ingest.store_notes_without_followers')) {
+            } elseif (FollowerService::followerCount($actor->id, true) == 0) {
+                return;
+            }
+        }
+
+        // Store the video as a status
+        try {
+            Helpers::storeStatus(
+                $url,
+                $actor,
+                $activity
+            );
+        } catch (\Exception $e) {
+            Log::error('Failed to store video status: ' . $e->getMessage());
+        }
     }
 }

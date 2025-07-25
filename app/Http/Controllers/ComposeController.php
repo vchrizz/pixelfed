@@ -587,7 +587,15 @@ class ComposeController extends Controller
             }
             $m->filter_class = in_array($media['filter_class'], Filter::classes()) ? $media['filter_class'] : null;
             $m->license = $license;
-            $m->caption = isset($media['alt']) ? strip_tags($media['alt']) : null;
+            if (isset($media['alt'])) {
+                $alt = $media['alt'];
+                // Preserve line breaks in alt text
+                $alt = str_replace(['<br>', '<br/>', '<br />'], "\n", $alt);
+                $alt = str_replace(['</p>', '</div>'], "\n", $alt);
+                $m->caption = trim(strip_tags($alt));
+            } else {
+                $m->caption = null;
+            }
             $m->order = isset($media['cursor']) && is_int($media['cursor']) ? (int) $media['cursor'] : $k;
 
             if ($cw == true || $profile->cw == true) {
@@ -621,7 +629,12 @@ class ComposeController extends Controller
         }
 
         $defaultCaption = '';
-        $status->caption = strip_tags($request->input('caption')) ?? $defaultCaption;
+        $caption = $request->input('caption') ?? $defaultCaption;
+        // Preserve line breaks and basic formatting while sanitizing dangerous HTML
+        $caption = str_replace(['<br>', '<br/>', '<br />'], "\n", $caption);
+        $caption = str_replace(['</p>', '</div>'], "\n", $caption);
+        $caption = strip_tags($caption, '<br><p>');
+        $status->caption = trim($caption);
         $status->rendered = $defaultCaption;
         $status->scope = 'draft';
         $status->visibility = 'draft';
@@ -736,7 +749,16 @@ class ComposeController extends Controller
             $status->comments_disabled = (bool) $request->input('comments_disabled');
         }
 
-        $status->caption = $request->filled('caption') ? strip_tags($request->caption) : $defaultCaption;
+        if ($request->filled('caption')) {
+            $caption = $request->caption;
+            // Preserve line breaks and basic formatting while sanitizing dangerous HTML
+            $caption = str_replace(['<br>', '<br/>', '<br />'], "\n", $caption);
+            $caption = str_replace(['</p>', '</div>'], "\n", $caption);
+            $caption = strip_tags($caption, '<br><p>');
+            $status->caption = trim($caption);
+        } else {
+            $status->caption = $defaultCaption;
+        }
         $status->rendered = $defaultCaption;
         $status->profile_id = $profile->id;
         $entities = [];

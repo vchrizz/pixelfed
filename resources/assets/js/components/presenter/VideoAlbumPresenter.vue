@@ -13,7 +13,8 @@
 				:interval="0"
 			>
 				<b-carousel-slide v-for="(vid, index) in status.media_attachments" :key="vid.id + '-media'">
-					<video slot="img" class="embed-responsive-item" preload="none" controls playsinline loop :alt="vid.description" width="100%" height="100%">
+					<iframe v-if="vid.mime === 'text/html'" slot="img" class="embed-responsive-item" :src="vid.url" width="100%" height="100%" frameborder="0" allowfullscreen></iframe>
+					<video v-else slot="img" class="embed-responsive-item" preload="none" controls playsinline loop :alt="vid.description" width="100%" height="100%">
 						<source :src="vid.url" :type="vid.mime">
 					</video>
 				</b-carousel-slide>
@@ -29,7 +30,8 @@
 			:interval="0"
 		>
 			<b-carousel-slide v-for="(vid, index) in status.media_attachments" :key="vid.id + '-media'">
-				<video slot="img" class="embed-responsive-item" preload="none" controls playsinline loop :alt="vid.description" width="100%" height="100%">
+				<iframe v-if="vid.mime === 'text/html'" slot="img" class="embed-responsive-item" :src="vid.url" width="100%" height="100%" frameborder="0" allowfullscreen></iframe>
+				<video v-else slot="img" class="embed-responsive-item" preload="none" controls playsinline loop :alt="vid.description" width="100%" height="100%">
 					<source :src="vid.url" :type="vid.mime">
 				</video>
 			</b-carousel-slide>

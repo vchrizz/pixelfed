@@ -588,7 +588,7 @@ class Helpers
         $url = self::getStatusUrl($activity, $id);
 
         if ((! isset($activity['type']) ||
-             in_array($activity['type'], ['Create', 'Note'])) &&
+             in_array($activity['type'], ['Create', 'Note', 'Video'])) &&
             ! self::validateStatusDomains($id, $url)) {
             throw new \Exception('Invalid status domains');
         }
@@ -606,7 +606,11 @@ class Helpers
         $status = self::createOrUpdateStatus($url, $profile, $id, $activity, $ts, $reply_to, $cw, $scope, $commentsDisabled);
 
         if ($reply_to === null) {
-            self::importNoteAttachment($activity, $status);
+            if ($activity['type'] === 'Video') {
+                self::importVideoAttachment($activity, $status);
+            } else {
+                self::importNoteAttachment($activity, $status);
+            }
         } else {
             if (isset($activity['attachment']) && ! empty($activity['attachment'])) {
                 self::importNoteAttachment($activity, $status);
@@ -1307,5 +1311,75 @@ class Helpers
             ->to($url)
             ->payload($body)
             ->send();
+    }
+
+    /**
+     * Import video attachment for PeerTube videos
+     */
+    public static function importVideoAttachment(array $data, Status $status): void
+    {
+        // PeerTube videos typically have their URL in the 'url' field
+        $videoUrl = null;
+        
+        if (isset($data['url'])) {
+            if (is_string($data['url'])) {
+                $videoUrl = $data['url'];
+            } elseif (is_array($data['url'])) {
+                // Look for video/mp4 or similar MIME types
+                foreach ($data['url'] as $urlObj) {
+                    if (isset($urlObj['mediaType']) && 
+                        (str_starts_with($urlObj['mediaType'], 'video/') || 
+                         $urlObj['mediaType'] === 'text/html')) {
+                        $videoUrl = $urlObj['href'] ?? $urlObj['url'];
+                        break;
+                    }
+                }
+                // Fallback to first URL if no video type found
+                if (!$videoUrl && isset($data['url'][0])) {
+                    $videoUrl = $data['url'][0]['href'] ?? $data['url'][0]['url'] ?? $data['url'][0];
+                }
+            }
+        }
+
+        if (!$videoUrl) {
+            // Fallback to activity ID if no URL found
+            $videoUrl = $data['id'] ?? null;
+        }
+
+        if (!$videoUrl || !filter_var($videoUrl, FILTER_VALIDATE_URL)) {
+            return;
+        }
+
+        // Create a media attachment for the external video
+        $media = new Media();
+        $media->status_id = $status->id;
+        $media->profile_id = $status->profile_id;
+        $media->user_id = $status->profile->user_id ?? null;
+        $media->media_path = $videoUrl; // Store external URL
+        $media->remote_media = true;
+        $media->remote_url = $videoUrl;
+        
+        // Determine MIME type based on URL structure
+        if (str_contains($videoUrl, 'peertube') || str_contains($videoUrl, '/watch/') || str_contains($videoUrl, '/videos/')) {
+            $media->mime = 'text/html'; // For iframe embeds
+        } else {
+            $media->mime = 'video/mp4'; // Default MIME type for direct videos
+        }
+        
+        $media->size = 0; // Unknown size for external videos
+        $media->caption = $data['name'] ?? null;
+        
+        // Try to extract dimensions if available
+        if (isset($data['width']) && isset($data['height'])) {
+            $media->width = (int) $data['width'];
+            $media->height = (int) $data['height'];
+        }
+        
+        $media->save();
+        
+        // Update status type to video
+        $status->type = 'video';
+        $status->save();
+        $status->viewType();
     }
 }

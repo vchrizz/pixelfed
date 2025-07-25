@@ -172,13 +172,39 @@ class StoryComposeController extends Controller
         }
 
         if ($story->type === 'photo') {
+            // Read EXIF before processing to preserve orientation
+            $exifOrientation = null;
+            try {
+                $exif = @exif_read_data($path);
+                if ($exif && isset($exif['Orientation'])) {
+                    $exifOrientation = $exif['Orientation'];
+                }
+            } catch (\Exception $e) {
+                // Continue without EXIF if reading fails
+            }
+
             $img = $this->imageManager->read($path);
+            
+            // Apply manual orientation correction if EXIF orientation is lost
+            if ($exifOrientation) {
+                switch ($exifOrientation) {
+                    case 3:
+                        $img = $img->rotate(180);
+                        break;
+                    case 6:
+                        $img = $img->rotate(90);
+                        break;
+                    case 8:
+                        $img = $img->rotate(-90);
+                        break;
+                    // Cases 1, 2, 4, 5, 7 are either normal or require flipping
+                    // which is less common for user uploads
+                }
+            }
+            
             $img = $img->crop($width, $height, $x, $y);
 
-            $img = $img->resize(1080, 1920, function ($constraint) {
-                $constraint->aspectRatio();
-                $constraint->upsize();
-            });
+            $img = $img->scaleDown(1080, 1920);
 
             $quality = config_cache('pixelfed.image_quality');
             $extension = pathinfo($path, PATHINFO_EXTENSION);

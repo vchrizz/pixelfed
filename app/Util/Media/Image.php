@@ -54,7 +54,7 @@ class Image
             autoOrientation: true,
             decodeAnimation: true,
             blendingColor: 'ffffff',
-            strip: true
+            strip: false  // Don't strip EXIF - we need orientation data
         );
     }
 
